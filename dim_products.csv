@@ -1,0 +1,11 @@
+location_key,country,region,state,city,postal_code,market
+LOC_001,United States,West,California,Los Angeles,90001,US
+LOC_002,United States,West,California,San Francisco,94103,US
+LOC_003,United States,West,Washington,Seattle,98101,US
+LOC_004,United States,East,New York,New York City,10001,US
+LOC_005,United States,East,Massachusetts,Boston,02108,US
+LOC_006,United States,East,Florida,Miami,33101,US
+LOC_007,United States,Central,Illinois,Chicago,60601,US
+LOC_008,United States,Central,Texas,Austin,73301,US
+LOC_009,United States,South,Georgia,Atlanta,30301,US
+LOC_010,United States,South,Texas,Houston,77002,US

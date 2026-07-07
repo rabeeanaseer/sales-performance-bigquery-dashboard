@@ -1,0 +1,12 @@
+[
+  {"name": "date_key", "type": "DATE", "mode": "REQUIRED"},
+  {"name": "day_of_week", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "day_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "day_of_month", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "month_number", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "month_name", "type": "STRING", "mode": "NULLABLE"},
+  {"name": "quarter_number", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "year_number", "type": "INTEGER", "mode": "NULLABLE"},
+  {"name": "is_weekend", "type": "BOOLEAN", "mode": "NULLABLE"},
+  {"name": "fiscal_year", "type": "INTEGER", "mode": "NULLABLE"}
+]
