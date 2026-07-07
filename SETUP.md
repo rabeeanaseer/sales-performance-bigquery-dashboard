@@ -14,25 +14,36 @@
 4. **Create the tables**
    Paste the full contents of `01_schema_ddl.sql` into the BigQuery query editor and run it. This creates `dim_date`, `dim_customers`, `dim_products`, `dim_locations`, and `fact_sales` as empty, correctly-typed tables.
 
-5. **Load the source CSV**
-   Two options:
-   - **UI upload (simplest):** In the dataset, click **Create Table** → Source: *Upload* → select your cleaned CSV per dimension/fact → Destination: matching table name → under **Schema**, either auto-detect or manually map to the DDL above → set **Write preference** to "Append" if the table already has the DDL-defined schema.
-   - **CLI (`bq load`), if you have the Cloud SDK locally:**
-     ```
-     bq load --source_format=CSV --skip_leading_rows=1 \
-       your_project:sales_dw.fact_sales \
-       ./data/fact_sales.csv \
-       ./schemas/fact_sales_schema.json
-     ```
-   Note: you will need to pre-process the flat Global Superstore file into the four dimension shapes + fact shape (a simple Python/pandas or even spreadsheet split) before loading — the DDL expects the star schema shape, not the flat original.
+5. **Load the CSVs — use the explicit schema files, not autodetect**
+   This repo ships ready-to-load data in `/data` and a matching schema file per table in `/schemas`. Using the schema file instead of BigQuery's autodetect matters: autodetect has been known to guess `INTEGER` for a column that later contains a decimal, or `STRING` for a date column with an unusual format — either silently breaks a join or a `SUM()` downstream. Load order matters: dimensions first, fact table last, so you catch a bad dimension load before it cascades into orphaned fact rows.
 
-6. **Sandbox limits to be aware of**
-   - 10 GB storage free, 1 TB query processing free per month — a 10k-row retail dataset is nowhere close to either limit.
+   - **CLI (`bq load`), recommended — deterministic and repeatable:**
+     ```bash
+     bq load --source_format=CSV --skip_leading_rows=1 \
+       your_project:sales_dw.dim_date        ./data/dim_date.csv        ./schemas/dim_date_schema.json
+     bq load --source_format=CSV --skip_leading_rows=1 \
+       your_project:sales_dw.dim_locations   ./data/dim_locations.csv   ./schemas/dim_locations_schema.json
+     bq load --source_format=CSV --skip_leading_rows=1 \
+       your_project:sales_dw.dim_products    ./data/dim_products.csv   ./schemas/dim_products_schema.json
+     bq load --source_format=CSV --skip_leading_rows=1 \
+       your_project:sales_dw.dim_customers   ./data/dim_customers.csv  ./schemas/dim_customers_schema.json
+     bq load --source_format=CSV --skip_leading_rows=1 \
+       your_project:sales_dw.fact_sales      ./data/fact_sales.csv     ./schemas/fact_sales_schema.json
+     ```
+   - **UI upload (if you don't have the Cloud SDK installed):** In the dataset, click **Create Table** → Source: *Upload* → select the CSV → Destination: matching table name → under **Schema**, click **Edit as text** and paste the contents of the matching `*_schema.json` file (BigQuery's UI accepts the same JSON schema array) rather than using auto-detect.
+
+   **If you want to use the real Global Superstore dataset instead of the synthetic one shipped here:** download it from Kaggle, then split its flat columns into the five table shapes above (a short pandas script — group unique customers into `dim_customers`, unique SKUs into `dim_products`, etc.) before loading. The column names in `/data/*.csv` already match the DDL exactly, so use them as the target shape to map into.
+
+6. **Validate before you trust anything**
+   Run `03_data_validation.sql` in the BigQuery console. Every check should return **0** violations/orphans. This step exists because a star schema with a silent bad join will still "work" — it just quietly drops rows or double-counts them, and you won't notice until a stakeholder asks why the dashboard total doesn't match finance's number.
+
+7. **Sandbox limits to be aware of**
+   - 10 GB storage free, 1 TB query processing free per month — this dataset (~2 MB, 14k fact rows) is nowhere close to either limit.
    - Sandbox tables expire after 60 days of no updates unless you upgrade to a billing account (still free-tier eligible, just requires a card on file). For a portfolio project you can simply re-run the load if it expires.
    - No streaming inserts in Sandbox mode — batch/file loads only, which is exactly what we're doing above.
 
-7. **Validate the load**
-   Run `02_analytics_queries.sql` — if it returns clean rows without null-heavy joins, your keys are aligned correctly across fact and dimension tables.
+8. **Run the analytics layer**
+   Once `03_data_validation.sql` passes clean, run `02_analytics_queries.sql`. The output should match the numbers in the README's Key Findings table — if it doesn't, something changed between the CSV and the DDL and is worth chasing down before it reaches a dashboard.
 
 ---
 
