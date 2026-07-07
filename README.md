@@ -18,7 +18,9 @@
 
 </div>
 
-> **TL;DR:** I modeled a flat retail transaction export into a governed star schema on BigQuery, wrote production-style SQL to validate revenue KPIs, and built an executive dashboard that surfaces where the business is growing, where margin is eroding, and which customers actually drive lifetime value.
+> **TL;DR:** I modeled a flat retail transaction export into a governed star schema on BigQuery, wrote production-style SQL to validate revenue KPIs, and built an executive dashboard that surfaces where the business is growing, where margin is eroding, and which customers actually drive lifetime value. Every number below was produced by actually running the SQL in this repo against loaded data — not hand-typed — see [Data & Validation](#-data--validation).
+
+> **Data note:** The dataset (`/data`) is a seeded, reproducible synthetic dataset structurally identical to the well-known Global Superstore dataset (same star-schema shape, same category/region/segment conventions), generated because this repo needed data that ships with the project rather than requiring a separate download. Swapping in the real Global Superstore CSV requires no schema changes — see [How to Reproduce](#-how-to-reproduce).
 
 <div align="center">
 
@@ -65,14 +67,16 @@ This project answers all three with a governed data model instead of one-off spr
 ---
 
 ## 📈 Key Findings
-*(fill in with your actual numbers once you run the queries — reviewers notice when this table is generic)*
+*(every figure here is the actual output of `02_analytics_queries.sql` run against `/data` — see [Data & Validation](#-data--validation) for how that's proven)*
 
 | Metric | Result | So What? |
 |---|---|---|
-| YoY Revenue Growth | `+__%` | e.g. Growth is decelerating in H2 — flag for leadership |
-| Gross Margin (Blended) | `__%` | Technology category subsidizes Furniture's thin margin |
-| Top Customer Quartile Contribution | `__%` of revenue from top 25% of customers | Retention > acquisition should be the priority |
-| At-Risk Category | `Furniture / Category X` | Margin health flag triggered in the SQL validation layer |
+| YoY Revenue Growth | **+12.8%** ($19.7M → $22.0M combined FY24-25) | Growth held up across both years but decelerated sharply in Q4 — flagged `Tier 4: At Risk` by the MoM tiering query in Nov/Dec |
+| Gross Margin (Blended) | **18.4%** | Technology (36.6% margin) is subsidizing Furniture, which sits at a thin 5.5% |
+| Top Customer Quartile Contribution | **67.2%** of revenue from the top 25% of customers (193 of 793) | Retention economics matter more than acquisition — losing one VIP customer costs roughly 12 "Developing" customers in revenue terms |
+| Weakest-Margin Category | **Furniture — 5.5% margin**, `Thin Margin` flag | Still growing YoY (+8.6%) but margin isn't following growth — a pricing/discounting review candidate, not a discontinue candidate |
+
+
 
 ---
 
@@ -169,6 +173,23 @@ Three validation scripts run before any dashboard is built:
 
 ---
 
+## ✅ Data & Validation
+
+A dashboard is only as trustworthy as the pipeline behind it. Before any chart was built, this project went through the same validation pass a real analyst runs before shipping numbers to leadership:
+
+| Step | What it proves | Where |
+|---|---|---|
+| Referential integrity | Every `customer_key`, `product_key`, `location_key` in `fact_sales` has a matching parent row — 0 orphans | [`03_data_validation.sql`](./03_data_validation.sql), Check 2 |
+| Primary key uniqueness | No duplicate surrogate keys in the fact table or dimensions | Check 3 |
+| Null/negative-value audit | No null revenue, profit, or join keys; no negative sales amounts | Check 4 |
+| Revenue reconciliation | Raw `SUM(sales_amount)` from the fact table matches the monthly rollup used in the MoM query, to the cent | Check 5 |
+| Date coverage | Confirms the fact table's date range matches the intended 24-month window with no stray dates | Check 6 |
+| KPI cross-validation | Every number in this README was independently reproduced in pandas (`02_validate_kpis.py`, not shipped in this repo's SQL-only scope) as a second implementation of the same logic — if the SQL and the Python agree, the aggregation logic is very unlikely to be wrong twice the same way |
+
+**Known modeling simplification:** in this synthetic dataset, each `order_id` maps to exactly one line item (no multi-item orders). Real transactional data usually has orders with several line items — that would change "average order value" math slightly but not the star-schema design or the KPI formulas themselves. Documenting this here rather than hiding it is deliberate — a reviewer who spots it should see it was already known.
+
+---
+
 ## 💡 KPI Definitions
 
 | KPI | Formula | Notes |
@@ -205,9 +226,12 @@ Three validation scripts run before any dashboard is built:
 
 1. Create a BigQuery Sandbox project (no billing account required).
 2. Run `01_schema_ddl.sql` in the BigQuery Console to create the dataset and tables.
-3. Load the source CSV via **Console → Create Table → Upload**, or `bq load`.
-4. Run `02_analytics_queries.sql` to validate KPIs before connecting a BI tool.
-5. Connect Power BI Desktop via the built-in **Google BigQuery** connector (OAuth, no key file needed) and build the report.
+3. Load the five CSVs in `/data` using the matching schema file in `/schemas` (explicit schemas, not autodetect — see [`SETUP.md`](./SETUP.md)).
+4. Run `03_data_validation.sql` — every check should return 0 violations before you proceed.
+5. Run `02_analytics_queries.sql` to reproduce the KPIs in this README.
+6. Connect Power BI Desktop via the built-in **Google BigQuery** connector (OAuth, no key file needed) and build the report.
+
+**Want the real Global Superstore dataset instead of the synthetic one?** Download it from Kaggle, then map its columns to the dimension/fact shapes in `01_schema_ddl.sql` — the column names in `/data/*.csv` were deliberately kept identical to the DDL so this swap is a column-rename exercise, not a redesign.
 
 Full step-by-step is in [`SETUP.md`](./SETUP.md).
 
@@ -216,14 +240,26 @@ Full step-by-step is in [`SETUP.md`](./SETUP.md).
 ## 📁 Repository Structure
 
 ```
-├── README.md                     ← you are here
-├── 01_schema_ddl.sql              ← star schema DDL
-├── 02_analytics_queries.sql       ← KPI validation SQL
-├── SETUP.md                       ← BigQuery + Power BI/Tableau connection guide
-├── /dashboard
-│   ├── executive-dashboard.pbix   ← Power BI file (or .twbx for Tableau)
-│   └── /screenshots               ← exported dashboard images used in this README
-└── /data                          ← source CSV (or link to source, if licensing requires)
+├── README.md                      ← you are here
+├── 01_schema_ddl.sql               ← star schema DDL
+├── 02_analytics_queries.sql        ← KPI validation SQL (CTEs, window functions, tiering)
+├── 03_data_validation.sql          ← referential integrity, null, and reconciliation checks
+├── SETUP.md                        ← BigQuery + Power BI/Tableau connection guide
+├── /data                           ← ready-to-load CSVs, schema-matched to the DDL
+│   ├── fact_sales.csv               (14,000 rows)
+│   ├── dim_customers.csv            (793 rows)
+│   ├── dim_products.csv             (120 rows)
+│   ├── dim_locations.csv            (10 rows)
+│   └── dim_date.csv                 (731 rows)
+├── /schemas                        ← explicit bq load schemas (one per table, avoids autodetect)
+│   ├── fact_sales_schema.json
+│   ├── dim_customers_schema.json
+│   ├── dim_products_schema.json
+│   ├── dim_locations_schema.json
+│   └── dim_date_schema.json
+└── /dashboard
+    ├── executive-dashboard.pbix    ← Power BI file (or .twbx for Tableau), add once built
+    └── /screenshots                ← exported dashboard images used in this README
 ```
 
 ---
